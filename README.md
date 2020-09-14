@@ -33,6 +33,7 @@ kubectl -> operator (lib:govmomi) -> vCenter
 All examples and components used on this demo are on a mac osx.
 
 ## Developer Software
+- git
 - Go lang - https://golang.org/dl/
 - Docker Desktop - https://www.docker.com/products/docker-desktop
 - Kubebuild - https://go.kubebuilder.io/quick-start.html
@@ -60,7 +61,9 @@ cd vmworld-code-operator
 ```
 
 At this time, we recommend you to open the code editor with both directories: the new directory you just created and this source code directory.
+It should like this:
 
+![Image](/images/vscode-empty-directory.png "VScode Screenshot with two directories")
 
 
 ```bash
