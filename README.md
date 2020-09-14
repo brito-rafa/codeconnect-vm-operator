@@ -3,13 +3,16 @@ Toy VM Operator using kubebuilder for educational purposes presented at VMware C
 
 # what are we trying to achieve?
 
-**declarative** desired state configuration over **imperative** scripting/automation (PowerCLI or `govc`)
+Build sample Kubernetes Operator using kubebuilder that will create/delete Virtual Machines based on **declarative** desired state configuration over **imperative** scripting/automation (i.e. PowerCLI or `govc`)
+
+This declarative configuration is exemplified below by a standard Kubernetes contruct called Customer Resource Definition (CRD):
 
 ```yaml
 apiVersion: vm.codeconnect.vmworld.com/v1alpha1
 kind: VmGroup
 metadata:
   name: vmgroup-sample
+  namespace: default
 spec:
   # Add fields here
   cpu: 4
@@ -18,10 +21,47 @@ spec:
   template: vm-template
 ```
 
-flow: kubectl -> operator (lib:govmomi) -> vCenter
+This CRD will yield the following configuration on vCenter:
 
+<add a screenshot here>.
+
+The flow: the user creates a CRD via kubectl command, the operator picks up the CRD object and interact with the vCenter over the govmomi (GO library).
+kubectl -> operator (lib:govmomi) -> vCenter
+
+# Requirements for building the operator
+
+All examples and components used on this demo are on a mac osx.
+
+## Developer Software
+- Go lang - https://golang.org/dl/
+- Docker Desktop - https://www.docker.com/products/docker-desktop
+- Kubebuild - https://go.kubebuilder.io/quick-start.html
+- Kustomize - https://kubernetes-sigs.github.io/kustomize/installation/
+- [Optional but Recommended] - Code editor such as (VScode)[https://code.visualstudio.com/download] or goland.
+
+## Kubernetes Cluster
+Any Kubernetes 1.16 and above. For this exercise, we will be using a standalone cluster Kind - https://kind.sigs.k8s.io/docs/user/quick-start/
+
+## vCenter 
+A vCenter, a user with privilege of creating and deleting Virtual Machines and VM folders.
+Example:
+The mac osx (or the k8s cluster) must have direct access to the vCenter.
 
 # scaffolding
+
+The first step is creating the directory with the kubebuilder foundation of the operator module, that is commonly referred as "scaffolding".
+
+Create a brand new directory. Use a meaningful name because the directory name will be used partially as a default name of the k8s namespace where the operator will run.
+
+```bash
+cd ~/go/src
+mkdir vmworld-code-operator
+cd vmworld-code-operator
+```
+
+At this time, we recommend you to open the code editor with both directories: the new directory you just created and this source code directory.
+
+
 
 ```bash
 go mod init vmworld/codeconnect
