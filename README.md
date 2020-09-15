@@ -146,10 +146,10 @@ Pay attention on the new version of the go.mod: kubebuilder populated all the de
 
 ## Concept
 
-The Custom Resource Definition (CRD)[https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/] is how you extend Kubernetes. Any custom controller/operator requires at least one CRD for its functionality (we will call it "root object").
+The Custom Resource Definition [CRD](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/) is how you extend Kubernetes. Any custom controller/operator requires at least one CRD for its functionality (we will call it "root object").
 When you design your operator, you will need to spend time to define what kind of root object(s) you will need and the data.
 
-Each K8s object has at least three sections: (metadata, spec and status)[https://kubernetes.io/docs/concepts/overview/working-with-objects/kubernetes-objects/].
+Each K8s object has at least three sections: [metadata, spec and status](https://kubernetes.io/docs/concepts/overview/working-with-objects/kubernetes-objects/).
 
 On Spec section is where you declare the state of the object you wish to have. On Status section is where the current state of the object. Your operator's job is reconcile these two sections.
 
@@ -169,10 +169,9 @@ cd ~/go/src
 cp codeconnect-vm-operator/api/v1alpha1/vmgroup_types.go myoperator/api/v1alpha1/vmgroup_types.go
 ```
 
-Look at the body of the vmgroup_types.go in respect of Spec and Status.
+Look at the body of the vmgroup_types.go, the screenshot below has the new Status section.
 
 ![Image](/images/vscode-vmgroup-types-go.png "VScode Screenshot with vmgroup_types.go")
-
 
 ## Version of CRDs
 
