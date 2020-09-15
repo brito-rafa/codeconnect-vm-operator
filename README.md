@@ -59,7 +59,9 @@ By default, kind will start a cluster with the latest version of Kubernetes. You
 kind create cluster --image=kindest/node:v1.16.4 --name myother-operator-dev
 ```
 
-You can switch from one cluster to another using the kubectl config use-context <name>. For this exercise, you will need only one cluster.
+You can switch from one cluster to another using the kubectl config use-context <name>. 
+For this exercise, you will need only one cluster.
+
 Additionally, let's make sure the cluster is responsive and create a namespace where we will create our VmGroup object:
 
 ```bash
@@ -78,10 +80,13 @@ Other vCenter requirements:
 - At least one VM template configured, preferrably under the "vm-operator" folder. The template name must be unique.
 
 Example of the vCenter configuration:
+
 ![Image](/images/vcenter-new-vmfolder.png "vCenter new folder creation.")
 
+
 Once "vm-operator" folder is created, populate with templates, it should look like this:
-![Image](/images/vcenter-vm-operator-folder.png "vCenter vm-operator folder.")
+
+![Image](/images/vcenter-vm-operator-folder-template.png "vCenter vm-operator folder.")
 
 Example of environmental settings you will need (eventually they will be a k8s secret):
 
