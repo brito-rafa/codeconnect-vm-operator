@@ -12,13 +12,13 @@ apiVersion: vm.codeconnect.vmworld.com/v1alpha1
 kind: VmGroup
 metadata:
   name: vmgroup-sample
-  namespace: default
+  namespace: myoperator-vms
 spec:
   # Add fields here
-  cpu: 4
+  cpu: 2
   memory: 1
   replicas: 3
-  template: vm-template
+  template: photon-template
 ```
 
 This CRD will yield the following configuration on vCenter:
@@ -60,20 +60,40 @@ kind create cluster --image=kindest/node:v1.16.4 --name myother-operator-dev
 ```
 
 You can switch from one cluster to another using the kubectl config use-context <name>. For this exercise, you will need only one cluster.
-Once your are done, you can destroy the kind cluster running:
+Additionally, let's make sure the cluster is responsive and create a namespace where we will create our VmGroup object:
 
 ```bash
-kind destroy cluster --name operator-dev
+$ kubectl create namespace myoperator-vms
+namespace/myoperator-vms created
 ```
 
-## vCenter 
-A vCenter, a user with privilege of creating and deleting Virtual Machines and VM folders.
-Example:
-The mac osx (or the k8s cluster) must have direct access to the vCenter.
+## vCenter Environment
+
+You will need a vCenter, a user with privilege of creating and deleting Virtual Machines and VM folders.
+Other vCenter requirements:
+- The k8s cluster must have direct access to the vCenter (no proxy, no jumpbox).
+- You will need to create a "vm-operator" folder under the datacenter. The controller will create VMs under this folder.
+- Limitation: you can't have more than one DataCenter managed by the vCenter.
+- A default Resource Group.
+- At least one VM template configured, preferrably under the "vm-operator" folder. The template name must be unique.
+
+Example of the vCenter configuration:
+![Image](/images/vcenter-new-vmfolder.png "vCenter new folder creation.")
+
+Once "vm-operator" folder is created, populate with templates, it should look like this:
+![Image](/images/vcenter-vm-operator-folder.png "vCenter vm-operator folder.")
+
+Example of environmental settings you will need (eventually they will be a k8s secret):
+
+```bash
+VC_HOST=10.78.126.237
+VC_USER=administrator@vsphere.local
+VC_PASS=Admin!23
+```
 
 # Downloading the sample code
 
-To follow these instructions, you will need to git clone this repo. 
+To follow the next instructions, you will need to git clone this repo to your machine. 
 
 ```bash
 cd ~/go/src
@@ -176,28 +196,114 @@ Look at the body of the vmgroup_types.go, the screenshot below has the new Statu
 ## Version of CRDs
 
 CRDs are evolving like any Kubernetes functionality. As of K8s 1.16, the default version of CRD is v1 which is the latest version.
-We want to onboard our controller with the latest version of CRDs (if you plan to run your operator on older version of K8s cluster, you will need to be more thoughtful on this part).
-For such, we need to set v1 version in makefile: 
+The latest version of CRD introduced many features, such as error control on the CRDs.
+We want to onboard our controller with the latest version of CRDs, For such, we need to set v1 version in makefile (if you plan to run your operator on older version of K8s cluster, skip this part). 
 
 ```bash
-# Makefile
+# edit ~/go/src/myoperator/Makefile and change to the following line
 CRD_OPTIONS ?= "crd:preserveUnknownFields=false,crdVersions=v1,trivialVersions=true"
 ```
 
 ## Creating the CRD
 
-Before onboarding your 
+The following will generate the CRD based on the spec/status that we copied (from last section):
+
 ```bash
-# show existing API resources before creating our CRD
-kubectl api-resources
+make manifests && make generate
+```
+
+Observation: You might have some issues in compiling with mismatching modules.
+For example, I had the following errors:
+
+```
+go: finding module for package k8s.io/api/auditregistration/v1alpha1
+go: finding module for package k8s.io/api/auditregistration/v1alpha1
+../../../pkg/mod/k8s.io/kube-openapi@v0.0.0-20200831175022-64514a1d5d59/pkg/util/proto/document.go:24:2: case-insensitive import collision: "github.com/googleapis/gnostic/openapiv2" and "github.com/googleapis/gnostic/OpenAPIv2"
+../../../pkg/mod/k8s.io/client-go@v11.0.0+incompatible/kubernetes/scheme/register.go:26:2: module k8s.io/api@latest found (v0.19.1), but does not contain package k8s.io/api/auditregistration/v1alpha1
+
+# As documented on
+# https://github.com/kubernetes/client-go/issues/741
+```
+
+I fixed it running:
+```
+go get -u k8s.io/client-go@v0.17.2 github.com/googleapis/gnostic@v0.3.1 ./...
+# and editing go.mod for client-go and apimachinery to match versions:
+# k8s.io/apimachinery v0.17.2
+# k8s.io/client-go v0.17.2
+# then running "go get" until there is a clean execution
+```
+
+Trying again, this time with a clean run:
+
+```bash
+ make manifests && make generate
+go: creating new go.mod: module tmp
+go: found sigs.k8s.io/controller-tools/cmd/controller-gen in sigs.k8s.io/controller-tools v0.2.5
+/Users/rbrito/go//bin/controller-gen "crd:preserveUnknownFields=false,crdVersions=v1,trivialVersions=true" rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+go: creating new go.mod: module tmp
+go: found sigs.k8s.io/controller-tools/cmd/controller-gen in sigs.k8s.io/controller-tools v0.2.5
+/Users/rbrito/go//bin/controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./..."
+```
+
+The success criteria is the CRD generated as config/crd/bases/vm.codeconnect.vmworld.com_vmgroups.yaml file.
+
+## Installing the CRD
+
+Before onboarding our CRDs, let's inspect the cluster to make sure they do not exist.
+The following command lists all API Groups of the cluster.
+
+```bash
+# show all existing API resources on this cluster
+$ kubectl api-resources
+# making sure they do not exist
+$ kubectl api-resources | grep codeconnect
+# empty
+```
+
+After check the vm.codeconnect.vmworld.com does not exist, let's install them:
+
+```bash
+$ kubectl create -f config/crd/bases/vm.codeconnect.vmworld.com_vmgroups.yaml 
+customresourcedefinition.apiextensions.k8s.io/vmgroups.vm.codeconnect.vmworld.com created
+
+# checking again
+$ kubectl api-resources | grep codeconnect
+vmgroups                          vg           vm.codeconnect.vmworld.com     true         VmGroup
+```
+
+Congrats, your cluster is now able to understand your CRD. 
+Let's create one VmGroup object under our namespace myoperator-vms:
+
+```bash
+cat <<EOF | kubectl -n myoperator-vms create -f -
+apiVersion: vm.codeconnect.vmworld.com/v1alpha1
+kind: VmGroup
+metadata:
+  name: vmgroup-sample
+spec:
+  # Add fields here
+  cpu: 2
+  memory: 1
+  replicas: 3
+  template: photon-template
+EOF
+
+# expected output
+vmgroup.vm.codeconnect.vmworld.com/vmgroup-sample created
+```
+
+Let's list the CRD using a standard kubectl command. Note the some fields are empty. 
+They are this way because we have not written our controller yet:
+
+```bash
+$ kubectl get vmgroups -n myoperator-vms
+NAME             PHASE   CURRENT   DESIRED   CPU   MEMORY   TEMPLATE          LAST_MESSAGE
+vmgroup-sample                     3         2     1        photon-template   
 ```
 
 
-add spec/status in `vmgroup_types.go`
-
-make manifests && make generate
-
-# vmgroup_controller.go
+# Controller: vmgroup_controller.go
 
 add vc client to controller struct
 
@@ -293,6 +399,9 @@ kubectl patch vg vg-2 --type merge -p '{"spec":{"template":"vm-operator-template
 ```bash
 kubectl delete vg --all -A
 kubectl delete ns codeconnect-vm-operator-system
+
+# or destroying the entire kind cluster
+kind destroy cluster --name operator-dev
 ```
 
 # Advanced Topics (we could not cover)
