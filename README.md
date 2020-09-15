@@ -47,6 +47,25 @@ Install all the following:
 ## Kubernetes Cluster
 Any Kubernetes 1.16 and above. For this exercise, we will be using a standalone cluster Kind - https://kind.sigs.k8s.io/docs/user/quick-start/
 
+To start a kind cluster on your mac, run the following command, setting as an arbitrarily name for your cluster (this name will be used for kubectl context):
+
+```bash
+kind create cluster --name operator-dev
+```
+
+By default, kind will start a cluster with the latest version of Kubernetes. You can have as many kind clusters you wish, as long as the cluster name is unique. The following example starts a kind cluster with k8s 1.16 version:
+
+```bash
+kind create cluster --image=kindest/node:v1.16.4 --name myother-operator-dev
+```
+
+You can switch from one cluster to another using the kubectl config use-context <name>. For this exercise, you will need only one cluster.
+Once your are done, you can destroy the kind cluster running:
+
+```bash
+kind destroy cluster --name operator-dev
+```
+
 ## vCenter 
 A vCenter, a user with privilege of creating and deleting Virtual Machines and VM folders.
 Example:
@@ -61,13 +80,13 @@ cd ~/go/src
 git clone https://github.com/embano1/codeconnect-vm-operator.git
 ```
 
-# Scaffolding
+# Kubebuilder Scaffolding
 
-"scaffolding" is the first step of building an operator with kubebuilder starting with a brand-new directory.
+"scaffolding" is the first step of building an operator which kubebuilder will initialize the operator from a brand-new directory.
 
 ## Creating the directory
 
-For academic purposes, we will call the directory as "myoperator" but choose a more meaningful name because this directory name will be used as part of the default name of the k8s namespace and container of your operator (default behavior and it can be changed).
+For academic purposes, we will call the directory as "myoperator" but choose a more meaningful name because this directory name will be used as part of the default name of the k8s namespace and container of your operator (this is default behavior and it can be changed).
 
 ```bash
 cd ~/go/src
@@ -75,10 +94,10 @@ mkdir myoperator
 cd myoperator
 ```
 
-At this time, we recommend you to open the code editor with both directories: the new directory you just created and this source code directory.
+At this time, we recommend you to open the code editor (using VScode as screenshots from now on) with both directories: the new directory you just created and this source code directory.
 It should look like this:
 
-![Image](/images/vscode-empty-directory.png "VScode Screenshot with two directories")
+![Image](/images/vscode-empty-directory.png "VScode Screenshot with two directories.")
 
 Now, define the go module name of your operator. This module name will be used inside of the go code. Module names are how packages make reference to each other.
 We will call it vmworld/codeconnect.
@@ -92,15 +111,15 @@ go mod init vmworld/codeconnect
 
 Look now the content of myoperator folder: you will have the go.mod for this module.
 
-![Image](/images/vscode-go-module-name.png "VScode Screenshot with operator module name")
+![Image](/images/vscode-go-module-name.png "VScode Screenshot with operator module name.")
 
 ## API Group Name, Version, Kind
 
 API Group, its versions and supported kinds are the part of the DNA of k8s. You can read about these concepts [here](https://kubernetes.io/docs/concepts/overview/kubernetes-api/).
 
-For academic purposes, this example creates a kind "VmGroup" that belongs to the API Group "vm.codeconnect.vmworld.com" with the initial version of v1alpha.
+For academic purposes, this example creates a kind "VmGroup" that belongs to the API Group "vm.codeconnect.vmworld.com" with v1alpha as the initial version.
 
-These are all parameters for the kubebuilder sccafolding (note the parameters --domain and then --group, --version --kind):
+These are all parameters for the kubebuilder scaffolding: please note the parameters --domain and then --group, --version --kind).
 
 ```bash
 cd ~/go/src/myoperator/
@@ -113,24 +132,67 @@ Create Controller [y/n]
 y
 ```
 
-Look again the now the content of myoperator folder: you will have a typical directory with go code and other directories.
-The screenshot below shows the default VmGroup type created by scaffolding.
+Look again the now the content of myoperator folder: you will have a typical directory with go code.
+The screenshot below shows the default VmGroup type created under the api directory.
 
-![Image](/images/vscode-kubebuilder-create-api.png "VScode Screenshot with operator module name")
+![Image](/images/vscode-kubebuilder-create-api.png "VScode Screenshot with operator module name.")
+
+Pay attention on the new version of the go.mod: kubebuilder populated all the dependencies for the new controller you are building.
+
+![Image](/images/vscode-go-mod-updated.png "VScode Screenshot with go.mod after kubebuilder scaffolding.")
+
 
 # Custom Resource Definition (CRD)
 
+## Concept
+
+The Custom Resource Definition (CRD)[https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/] is how you extend Kubernetes. Any custom controller/operator requires at least one CRD for its functionality (we will call it "root object").
+When you design your operator, you will need to spend time to define what kind of root object(s) you will need and the data.
+
+Each K8s object has at least three sections: (metadata, spec and status)[https://kubernetes.io/docs/concepts/overview/working-with-objects/kubernetes-objects/].
+
+On Spec section is where you declare the state of the object you wish to have. On Status section is where the current state of the object. Your operator's job is reconcile these two sections.
+
+## Our example: vmgroup_types.go
+
+For our academic example, we want to define a root object type "Vmgroup" that will create a VM folder on vCenter.
+For such, we need to provide the following information to vCenter (besides the name of the folder):
+- cpu: how many CPUs that each VM will be created with. It is an integer.
+- memory: how much memory (in GB) that each VM will be created with. Integer.
+- replicas: How many VMs under the folder. Integer.
+- template: the name of the VM template that VMs will be created. It is a string.
+
+Scaffolding already created a vmgroup_types.go for us. However, it is empty for these desired fields (on both spec and status sections). We will need to populate these sections with our business logic.
+
 ```bash
-# show existing API resources before creating our CRD
-kubectl api-resources
+cd ~/go/src
+cp codeconnect-vm-operator/api/v1alpha1/vmgroup_types.go myoperator/api/v1alpha1/vmgroup_types.go
 ```
 
-set crd v1 version in makefile: 
+Look at the body of the vmgroup_types.go in respect of Spec and Status.
+
+![Image](/images/vscode-vmgroup-types-go.png "VScode Screenshot with vmgroup_types.go")
+
+
+## Version of CRDs
+
+CRDs are evolving like any Kubernetes functionality. As of K8s 1.16, the default version of CRD is v1 which is the latest version.
+We want to onboard our controller with the latest version of CRDs (if you plan to run your operator on older version of K8s cluster, you will need to be more thoughtful on this part).
+For such, we need to set v1 version in makefile: 
 
 ```bash
 # Makefile
 CRD_OPTIONS ?= "crd:preserveUnknownFields=false,crdVersions=v1,trivialVersions=true"
 ```
+
+## Creating the CRD
+
+Before onboarding your 
+```bash
+# show existing API resources before creating our CRD
+kubectl api-resources
+```
+
 
 add spec/status in `vmgroup_types.go`
 
