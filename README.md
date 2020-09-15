@@ -33,12 +33,16 @@ kubectl -> operator (lib:govmomi) -> vCenter
 All examples and components used on this demo are on a mac osx.
 
 ## Developer Software
-- git
+
+Install all the following:
+
+- git client
 - Go lang - https://golang.org/dl/
 - Docker Desktop - https://www.docker.com/products/docker-desktop
 - Kubebuild - https://go.kubebuilder.io/quick-start.html
 - Kustomize - https://kubernetes-sigs.github.io/kustomize/installation/
-- [Optional but Recommended] - Code editor such as (VScode)[https://code.visualstudio.com/download] or goland.
+- [Optional but Recommended] - Code editor such as [VScode](https://code.visualstudio.com/download) or goland.
+- [Optional but Recommended] - have access to a public registry such as quay.io or hub.docker.com
 
 ## Kubernetes Cluster
 Any Kubernetes 1.16 and above. For this exercise, we will be using a standalone cluster Kind - https://kind.sigs.k8s.io/docs/user/quick-start/
@@ -48,29 +52,73 @@ A vCenter, a user with privilege of creating and deleting Virtual Machines and V
 Example:
 The mac osx (or the k8s cluster) must have direct access to the vCenter.
 
-# scaffolding
+# Downloading the sample code
 
-The first step is creating the directory with the kubebuilder foundation of the operator module, that is commonly referred as "scaffolding".
-
-Create a brand new directory. Use a meaningful name because the directory name will be used partially as a default name of the k8s namespace where the operator will run.
+To follow these instructions, you will need to git clone this repo. 
 
 ```bash
 cd ~/go/src
-mkdir vmworld-code-operator
-cd vmworld-code-operator
+git clone https://github.com/embano1/codeconnect-vm-operator.git
+```
+
+# Scaffolding
+
+"scaffolding" is the first step of building an operator with kubebuilder starting with a brand-new directory.
+
+## Creating the directory
+
+For academic purposes, we will call the directory as "myoperator" but choose a more meaningful name because this directory name will be used as part of the default name of the k8s namespace and container of your operator (default behavior and it can be changed).
+
+```bash
+cd ~/go/src
+mkdir myoperator
+cd myoperator
 ```
 
 At this time, we recommend you to open the code editor with both directories: the new directory you just created and this source code directory.
-It should like this:
+It should look like this:
 
 ![Image](/images/vscode-empty-directory.png "VScode Screenshot with two directories")
 
+Now, define the go module name of your operator. This module name will be used inside of the go code. Module names are how packages make reference to each other.
+We will call it vmworld/codeconnect.
+
+## Initializing the Directory
 
 ```bash
+cd ~/go/src/myoperator/
 go mod init vmworld/codeconnect
-kubebuilder init --domain codeconnect.vmworld.com
-kubebuilder create api --group vm --version v1alpha1 --kind VmGroup
 ```
+
+Look now the content of myoperator folder: you will have the go.mod for this module.
+
+![Image](/images/vscode-go-module-name.png "VScode Screenshot with operator module name")
+
+## API Group Name, Version, Kind
+
+API Group, its versions and supported kinds are the part of the DNA of k8s. You can read about these concepts [here](https://kubernetes.io/docs/concepts/overview/kubernetes-api/).
+
+For academic purposes, this example creates a kind "VmGroup" that belongs to the API Group "vm.codeconnect.vmworld.com" with the initial version of v1alpha.
+
+These are all parameters for the kubebuilder sccafolding (note the parameters --domain and then --group, --version --kind):
+
+```bash
+cd ~/go/src/myoperator/
+kubebuilder init --domain codeconnect.vmworld.com
+# answer yes for both questions
+kubebuilder create api --group vm --version v1alpha1 --kind VmGroup
+Create Resource [y/n]
+y
+Create Controller [y/n]
+y
+```
+
+Look again the now the content of myoperator folder: you will have a typical directory with go code and other directories.
+The screenshot below shows the default VmGroup type created by scaffolding.
+
+![Image](/images/vscode-kubebuilder-create-api.png "VScode Screenshot with operator module name")
+
+# Custom Resource Definition (CRD)
 
 ```bash
 # show existing API resources before creating our CRD
