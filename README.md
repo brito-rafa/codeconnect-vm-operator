@@ -53,7 +53,8 @@ To start a kind cluster on your mac, run the following command, setting as an ar
 kind create cluster --name operator-dev
 ```
 
-By default, kind will start a cluster with the latest version of Kubernetes. You can have as many kind clusters you wish, as long as the cluster name is unique. The following example starts a kind cluster with k8s 1.16 version:
+By default, kind will start a cluster with the latest version of Kubernetes. You can have as many kind clusters you wish, as long as the cluster name is unique.
+The following example starts a kind cluster with k8s 1.16 version:
 
 ```bash
 kind create cluster --image=kindest/node:v1.16.4 --name myother-operator-dev
@@ -79,22 +80,16 @@ Other vCenter requirements:
 - A default Resource Group.
 - At least one VM template configured, preferrably under the "vm-operator" folder. The template name must be unique.
 
-Example of the vCenter configuration:
+Just an example of how to create a VM folder on any given vCenter configuration:
 
 ![Image](/images/vcenter-new-vmfolder.png "vCenter new folder creation.")
 
 
-Once "vm-operator" folder is created, populate with templates, it should look like this:
+Once "vm-operator" folder is created, populate with templates, in this case the template is called "vm-operator-template".
+It should look like this:
 
 ![Image](/images/vcenter-vm-operator-folder-template.png "vCenter vm-operator folder.")
 
-Example of environmental settings you will need (eventually they will be a k8s secret):
-
-```bash
-VC_HOST=10.78.126.237
-VC_USER=administrator@vsphere.local
-VC_PASS=Admin!23
-```
 
 # Downloading the sample code
 
@@ -124,10 +119,11 @@ It should look like this:
 
 ![Image](/images/vscode-empty-directory.png "VScode Screenshot with two directories.")
 
-Now, define the go module name of your operator. This module name will be used inside of the go code. Module names are how packages make reference to each other.
-We will call it myoperator as well.
 
 ## Initializing the Directory
+
+Now, define the go module name of your operator. This module name will be used inside of the go code.
+We will call it myoperator as well (same as the directory name).
 
 ```bash
 cd ~/go/src/myoperator/
@@ -135,6 +131,7 @@ go mod init myoperator
 ```
 
 At this point, you will have a single file under myoperator folder: go.mod.
+![Image](/images/vscode-go-module-name.png "VScode Screenshot with go.mod after kubebuilder scaffolding.")
 
 ## API Group Name, Version, Kind
 
@@ -354,11 +351,19 @@ go vet ./...
 go build -o bin/manager main.go
 ```
 
-## first run of the manager
+## Running the controller in development mode
 
 For the first run, we will run our controller on our desktop.
 
 Finally, let's set the environmental variables for the vCenter connection:
+
+```bash
+export VC_HOST=10.186.34.28
+export VC_USER=administrator@vsphere.local
+export VC_PASS='Admin!23'
+```
+
+Other vCenter (pending a single DC):
 
 ```bash
 export VC_HOST=lab02-m01-vc01.lab02.vsanpe.vmware.com
@@ -366,6 +371,8 @@ export VC_USER=rbrito@vsphere.local
 export VC_PASS=P@ssw0rd
 ```
 
+Run the controller locally on your machine (it is not yet as a pod). 
+See common errors section to troubleshoot, but you should see the following messages:
 
 ```bash
 bin/manager -insecure
@@ -374,7 +381,50 @@ bin/manager -insecure
 
 
 
-add vc client to controller struct
+
+# main.go
+
+
+
+open watch in a separate window
+
+```bash
+watch -n1 "kubectl get vg,deploy,secret"
+```
+
+
+
+# deploy to kubernetes
+
+
+```bash
+# build and deploy the manager to the cluster
+make docker-build docker-push IMG=embano1/codeconnect-vm-operator:latest
+make deploy IMG=embano1/codeconnect-vm-operator:latest
+```
+
+show the `manager.yaml`  manifest
+
+```bash
+# create the secret in the target namespace
+kubectl create ns codeconnect-vm-operator-system
+kubectl -n codeconnect-vm-operator-system create secret generic vc-creds --from-literal='VC_USER=administrator@vsphere.local' --from-literal='VC_PASS=Admin!23' --from-literal='VC_HOST=10.78.126.237'
+```
+
+open watch in a separate window
+
+```bash
+watch -n1 "kubectl -n codeconnect-vm-operator-system get vg,deploy,secret"
+```
+
+
+fix the vg-2 template issue
+
+```bash
+kubectl patch vg vg-2 --type merge -p '{"spec":{"template":"vm-operator-template"}}'
+```
+
+# Deep dive on the code
 
 ```go
 type VmGroupReconciler struct {
@@ -385,61 +435,37 @@ type VmGroupReconciler struct {
 }
 ```
 
-# main.go
+## Reconcile
 
+TBD
 
+## Finalizer
 
+TBD
 
-open watch in a separate window
+# Common Errors of this Academic Exercise
 
-```bash
-watch -n1 "kubectl get vg,deploy,secret"
-```
-
-run the operator locally
-
-```bash
-make manager && bin/manager -insecure
-```
-
-
-# deploy to kubernetes
-
-show the `manager.yaml`  manifest
-
-```bash
-# create the secret in the target namespace
-kubectl create ns codeconnect-vm-operator-system
-kubectl -n codeconnect-vm-operator-system create secret generic vc-creds --from-literal='VC_USER=administrator@vsphere.local' --from-literal='VC_PASS=Admin!23' --from-literal='VC_HOST=10.78.126.237'
-```
-
-delete `suite_test.go` since we're not writing any unit/integration tests and
-deployment will otherwise fail
-
-```bash
-# build and deploy the manager to the cluster
-make docker-build docker-push IMG=embano1/codeconnect-vm-operator:latest
-make deploy IMG=embano1/codeconnect-vm-operator:latest
-```
-
-open watch in a separate window
-
-```bash
-watch -n1 "kubectl -n codeconnect-vm-operator-system get vg,deploy,secret"
-```
-
-create some VmGroups
-
-```bash
+## Lack of environmental variables
 
 ```
-
-fix the vg-2 template issue
-
-```bash
-kubectl patch vg vg-2 --type merge -p '{"spec":{"template":"vm-operator-template"}}'
+{"level":"error","ts":1600286316.549897,"logger":"setup","msg":"could not connect to vCenter","controller":"VmGroup","error":"could not parse URL (environment variables set?)","errorVerbose":"could not parse URL (environment variables set?)\nmain.newClient\n\t/Users/rbrito/go/src/myoperator/main.go:137\nmain.main\n\t/Users/rbrito/go/src/myoperator/main.go:90\nruntime.main\n\t/usr/local/Cellar/go/1.14.2_1/libexec/src/runtime/proc.go:203\nruntime.goexit\n\t/usr/local/Cellar/go/1.14.2_1/libexec/src/runtime/asm_amd64.s:1373","stacktrace":"github.com/go-logr/zapr.(*zapLogger).Error\n\t/Users/rbrito/go/pkg/mod/github.com/go-logr/zapr@v0.2.0/zapr.go:132\nmain.main\n\t/Users/rbrito/go/src/myoperator/main.go:92\nruntime.main\n\t/usr/local/Cellar/go/1.14.2_1/libexec/src/runtime/proc.go:203"}
 ```
 
+## vCenter has multiple DataCenters
+
+TBD
+
+## Need the -insecure parameter
+
+TBD
+
+## Kind cluster not responsive
+
+TBD
+
+# Need to fix go.mod
+
+TBD
 
 # cleanup
 
