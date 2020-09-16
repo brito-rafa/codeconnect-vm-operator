@@ -125,18 +125,16 @@ It should look like this:
 ![Image](/images/vscode-empty-directory.png "VScode Screenshot with two directories.")
 
 Now, define the go module name of your operator. This module name will be used inside of the go code. Module names are how packages make reference to each other.
-We will call it vmworld/codeconnect.
+We will call it myoperator as well.
 
 ## Initializing the Directory
 
 ```bash
 cd ~/go/src/myoperator/
-go mod init vmworld/codeconnect
+go mod init myoperator
 ```
 
-Look now the content of myoperator folder: you will have the go.mod for this module.
-
-![Image](/images/vscode-go-module-name.png "VScode Screenshot with operator module name.")
+At this point, you will have a single file under myoperator folder: go.mod.
 
 ## API Group Name, Version, Kind
 
@@ -310,6 +308,72 @@ vmgroup-sample                     3         2     1        photon-template
 
 # Controller: vmgroup_controller.go
 
+It is time to compile the controller. 
+For such, we will copy some files from this source repo to our myoperator directory.
+We will go over the code later.
+
+```bash
+cd ~/go/src
+# limiters.go, vmgroup_controller.go and vsphere.go
+cp codeconnect-vm-operator/controllers/* myoperator/controllers/
+cp codeconnect-vm-operator/main.go myoperator/main.go
+```
+
+After the copy, we need make sure the import directives point to our myoperator directory.
+
+See screenshot below the orginal main.go:
+
+![Image](/images/vscode-old-main-go.png "VScode Screenshot with old main.go")
+
+Change the import to the "myoperator" directory:
+
+![Image](/images/vscode-new-main-go.png "VScode Screenshot with new main.go")
+
+Repeat the same changes on vmgroup_controller.go and vsphere.go.
+On the latter, you will need to change the constant to match your vCenter datacenter.
+See example below:
+
+![Image](/images/vscode-new-vsphere-go.png "VScode Screenshot with new vsphere.go")
+
+Since this code is for academic purposes, delete `suite_test.go` since we're not writing any unit/integration tests.
+
+```bash
+cd ~/go/src/myoperator
+rm controllers/suite_test.go
+```
+
+## Compiling
+
+```bash
+$ make manager
+go: creating new go.mod: module tmp
+go: found sigs.k8s.io/controller-tools/cmd/controller-gen in sigs.k8s.io/controller-tools v0.2.5
+/Users/rbrito/go//bin/controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./..."
+go fmt ./...
+go vet ./...
+go build -o bin/manager main.go
+```
+
+## first run of the manager
+
+For the first run, we will run our controller on our desktop.
+
+Finally, let's set the environmental variables for the vCenter connection:
+
+```bash
+export VC_HOST=lab02-m01-vc01.lab02.vsanpe.vmware.com
+export VC_USER=rbrito@vsphere.local
+export VC_PASS=P@ssw0rd
+```
+
+
+```bash
+bin/manager -insecure
+```
+
+
+
+
 add vc client to controller struct
 
 ```go
@@ -323,30 +387,8 @@ type VmGroupReconciler struct {
 
 # main.go
 
-# first run of the manager
 
-install CRD
 
-```bash
-# show API resources including our CRD
-kubectl api-resources
-```
-
-```bash
-kubectl create -f config/crd/bases/vm.codeconnect.vmworld.com_vmgroups.yaml
-customresourcedefinition.apiextensions.k8s.io/vmgroups.vm.codeconnect.vmworld.com created
-
-kubectl get vg
-No resources found in default namespace.
-```
-
-export environment variables
-
-```bash
-export VC_USER=administrator@vsphere.local
-export VC_PASS='Admin!23'
-export VC_HOST=10.78.126.237
-```
 
 open watch in a separate window
 
