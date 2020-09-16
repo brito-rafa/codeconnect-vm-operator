@@ -18,12 +18,12 @@ spec:
   cpu: 2
   memory: 1
   replicas: 3
-  template: photon-template
+  template: my-operator-template
 ```
 
 This CRD will yield the following configuration on vCenter:
 
-<add a screenshot here>.
+![Image](/images/vcenter-final-result.png "vCenter with final result of a CRD desired state.")
 
 The flow: the user creates a CRD via kubectl command, the operator picks up the CRD object and interact with the vCenter over the govmomi (GO library).
 kubectl -> operator (lib:govmomi) -> vCenter
@@ -211,33 +211,13 @@ The following will generate the CRD based on the spec/status that we copied (fro
 ```bash
 make manifests && make generate
 ```
+You might have some issues in compiling with mismatching modules.
+See section common errors if you encounter those.
 
-Observation: You might have some issues in compiling with mismatching modules.
-For example, I had the following errors:
-
-```
-go: finding module for package k8s.io/api/auditregistration/v1alpha1
-go: finding module for package k8s.io/api/auditregistration/v1alpha1
-../../../pkg/mod/k8s.io/kube-openapi@v0.0.0-20200831175022-64514a1d5d59/pkg/util/proto/document.go:24:2: case-insensitive import collision: "github.com/googleapis/gnostic/openapiv2" and "github.com/googleapis/gnostic/OpenAPIv2"
-../../../pkg/mod/k8s.io/client-go@v11.0.0+incompatible/kubernetes/scheme/register.go:26:2: module k8s.io/api@latest found (v0.19.1), but does not contain package k8s.io/api/auditregistration/v1alpha1
-
-# As documented on
-# https://github.com/kubernetes/client-go/issues/741
-```
-
-I fixed it running:
-```
-go get -u k8s.io/client-go@v0.17.2 github.com/googleapis/gnostic@v0.3.1 ./...
-# and editing go.mod for client-go and apimachinery to match versions:
-# k8s.io/apimachinery v0.17.2
-# k8s.io/client-go v0.17.2
-# then running "go get" until there is a clean execution
-```
-
-Trying again, this time with a clean run:
+Example of a clean run:
 
 ```bash
- make manifests && make generate
+$ make manifests && make generate
 go: creating new go.mod: module tmp
 go: found sigs.k8s.io/controller-tools/cmd/controller-gen in sigs.k8s.io/controller-tools v0.2.5
 /Users/rbrito/go//bin/controller-gen "crd:preserveUnknownFields=false,crdVersions=v1,trivialVersions=true" rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
@@ -286,7 +266,7 @@ spec:
   cpu: 2
   memory: 1
   replicas: 3
-  template: photon-template
+  template: vm-operator-template
 EOF
 
 # expected output
@@ -371,26 +351,33 @@ export VC_USER=rbrito@vsphere.local
 export VC_PASS=P@ssw0rd
 ```
 
-Run the controller locally on your machine (it is not yet as a pod). 
+Now, let's start controller locally on your machine. This is known running the controller in development mode (since it is not yet as a pod).
 See common errors section to troubleshoot, but you should see the following messages:
 
 ```bash
-bin/manager -insecure
+$ bin/manager -insecure
+
+"level":"info","ts":1600289927.772952,"logger":"controller-runtime.metrics","msg":"metrics server is starting to listen","addr":":8080"}
+{"level":"info","ts":1600289929.190078,"logger":"setup","msg":"starting manager"}
+{"level":"info","ts":1600289929.190326,"logger":"controller-runtime.manager","msg":"starting metrics server","path":"/metrics"}
+{"level":"info","ts":1600289929.190331,"logger":"controller","msg":"Starting EventSource","reconcilerGroup":"vm.codeconnect.vmworld.com","reconcilerKind":"VmGroup","controller":"vmgroup","source":"kind source: /, Kind="}
+{"level":"info","ts":1600289929.293183,"logger":"controller","msg":"Starting Controller","reconcilerGroup":"vm.codeconnect.vmworld.com","reconcilerKind":"VmGroup","controller":"vmgroup"}
+{"level":"info","ts":1600289929.293258,"logger":"controller","msg":"Starting workers","reconcilerGroup":"vm.codeconnect.vmworld.com","reconcilerKind":"VmGroup","controller":"vmgroup","worker count":1}
+{"level":"info","ts":1600289929.293513,"logger":"controllers.VmGroup","msg":"received reconcile request for \"vmgroup-sample\" (namespace: \"myoperator-vms\")","vmgroup":"myoperator-vms/vmgroup-sample"}
+{"level":"info","ts":1600289929.683297,"logger":"controllers.VmGroup","msg":"VmGroup folder does not exist, creating folder","vmgroup":"myoperator-vms/vmgroup-sample"}
+{"level":"info","ts":1600289929.68333,"logger":"controllers.VmGroup","msg":"creating VmGroup in vCenter","vmgroup":"myoperator-vms/vmgroup-sample"}
+{"level":"info","ts":1600289930.958067,"logger":"controllers.VmGroup","msg":"no VMs found for VmGroup, creating 3 replica(s)","vmgroup":"myoperator-vms/vmgroup-sample"}
+{"level":"info","ts":1600289930.958116,"logger":"controllers.VmGroup","msg":"creating clone \"vmgroup-sample-replica-lbzgbaic\" from template \"vm-operator-template\"","vmgroup":"myoperator-vms/vmgroup-sample"}
+{"level":"info","ts":1600289930.9581382,"logger":"controllers.VmGroup","msg":"creating clone \"vmgroup-sample-replica-mrajwwht\" from template \"vm-operator-template\"","vmgroup":"myoperator-vms/vmgroup-sample"}
+{"level":"info","ts":1600289930.9581592,"logger":"controllers.VmGroup","msg":"creating clone \"vmgroup-sample-replica-hctcuaxh\" from template \"vm-operator-template\"","vmgroup":"myoperator-vms/vmgroup-sample"}
+{"level":"info","ts":1600289938.199923,"logger":"controllers.VmGroup","msg":"received reconcile request for \"vmgroup-sample\" (namespace: \"myoperator-vms\")","vmgroup":"myoperator-vms/vmgroup-sample"}
+{"level":"info","ts":1600289939.453033,"logger":"controllers.VmGroup","msg":"replica count in sync, checking power state","vmgroup":"myoperator-vms/vmgroup-sample"}
 ```
 
 
 
 
 
-# main.go
-
-
-
-open watch in a separate window
-
-```bash
-watch -n1 "kubectl get vg,deploy,secret"
-```
 
 
 
@@ -417,14 +404,15 @@ open watch in a separate window
 watch -n1 "kubectl -n codeconnect-vm-operator-system get vg,deploy,secret"
 ```
 
-
 fix the vg-2 template issue
 
 ```bash
 kubectl patch vg vg-2 --type merge -p '{"spec":{"template":"vm-operator-template"}}'
 ```
 
-# Deep dive on the code
+# Code Deep Dive
+
+This section will highlight some of the go code that made the controller functional.
 
 ```go
 type VmGroupReconciler struct {
@@ -435,7 +423,20 @@ type VmGroupReconciler struct {
 }
 ```
 
+# main.go
+
+open watch in a separate window
+
+```bash
+watch -n1 "kubectl get vg,deploy,secret"
+```
+
+
 ## Reconcile
+
+TBD
+
+## Limit
 
 TBD
 
@@ -443,7 +444,45 @@ TBD
 
 TBD
 
-# Common Errors of this Academic Exercise
+# Common Errors you might encounter during this exercise
+
+## go.mod incompability
+
+You might have some issues in compiling with mismatching modules.
+For example, I had the following errors:
+
+```
+$ make manifests && make generate
+go: finding module for package k8s.io/api/auditregistration/v1alpha1
+go: finding module for package k8s.io/api/auditregistration/v1alpha1
+../../../pkg/mod/k8s.io/kube-openapi@v0.0.0-20200831175022-64514a1d5d59/pkg/util/proto/document.go:24:2: case-insensitive import collision: "github.com/googleapis/gnostic/openapiv2" and "github.com/googleapis/gnostic/OpenAPIv2"
+../../../pkg/mod/k8s.io/client-go@v11.0.0+incompatible/kubernetes/scheme/register.go:26:2: module k8s.io/api@latest found (v0.19.1), but does not contain package k8s.io/api/auditregistration/v1alpha1
+
+# As documented on
+# https://github.com/kubernetes/client-go/issues/741
+```
+
+I fixed it running:
+```
+go get -u k8s.io/client-go@v0.17.2 github.com/googleapis/gnostic@v0.3.1 ./...
+# and editing go.mod for client-go and apimachinery to match versions:
+# k8s.io/apimachinery v0.17.2
+# k8s.io/client-go v0.17.2
+# then running "go get <module>" until there is a clean execution
+```
+
+## CRDs are not applied yet
+
+```
+$ kubectl create vmgroup
+error: unable to recognize "STDIN": no matches for kind "VmGroup" in version "vm.codeconnect.vmworld.com/v1alpha1"
+```
+
+## Cluster not running / kubeconfig misconfigured
+
+```
+"level":"error","ts":1600288746.2496572,"logger":"controller-runtime.client.config","msg":"unable to get kubeconfig","error":"invalid configuration: no configuration has been provided, try setting KUBERNETES_MASTER environment variable","errorCauses":[{"error":"no configuration has been provided, try setting KUBERNETES_MASTER environment variable"}],"stacktrace":"github.com/go-logr/zapr.(*zapLogger).Error\n\t/Users/rbrito/go/pkg/mod/github.com/go-logr/zapr@v0.2.0/zapr.go:132\nsigs.k8s.io/controller-runtime/pkg/client/config.GetConfigOrDie\n\t/Users/rbrito/go/pkg/mod/sigs.k8s.io/controller-runtime@v0.6.3/pkg/client/config/config.go:159\nmain.main\n\t/Users/rbrito/go/src/myoperator/main.go:70\nruntime.main\n\t/usr/local/Cellar/go/1.14.2_1/libexec/src/runtime/proc.go:203"}
+```
 
 ## Lack of environmental variables
 
@@ -451,23 +490,20 @@ TBD
 {"level":"error","ts":1600286316.549897,"logger":"setup","msg":"could not connect to vCenter","controller":"VmGroup","error":"could not parse URL (environment variables set?)","errorVerbose":"could not parse URL (environment variables set?)\nmain.newClient\n\t/Users/rbrito/go/src/myoperator/main.go:137\nmain.main\n\t/Users/rbrito/go/src/myoperator/main.go:90\nruntime.main\n\t/usr/local/Cellar/go/1.14.2_1/libexec/src/runtime/proc.go:203\nruntime.goexit\n\t/usr/local/Cellar/go/1.14.2_1/libexec/src/runtime/asm_amd64.s:1373","stacktrace":"github.com/go-logr/zapr.(*zapLogger).Error\n\t/Users/rbrito/go/pkg/mod/github.com/go-logr/zapr@v0.2.0/zapr.go:132\nmain.main\n\t/Users/rbrito/go/src/myoperator/main.go:92\nruntime.main\n\t/usr/local/Cellar/go/1.14.2_1/libexec/src/runtime/proc.go:203"}
 ```
 
+## Need the -insecure parameter
+
+If your vCenter does not have a signed cert, you will need to pass the -insecure flag to the controller (manager binary).
+
+```
+"level":"error","ts":1600288944.8231418,"logger":"setup","msg":"could not connect to vCenter","controller":"VmGroup","error":"could not get vCenter client: Post \"https://10.186.34.28/sdk\": x509: cannot validate certificate for 10.186.34.28 because it doesn't contain any IP SANs","stacktrace":"github.com/go-logr/zapr.(*zapLogger).Error\n\t/Users/rbrito/go/pkg/mod/github.com/go-logr/zapr@v0.2.0/zapr.go:132\nmain.main\n\t/Users/rbrito/go/src/myoperator/main.go:92\nruntime.main\n\t/usr/local/Cellar/go/1.14.2_1/libexec/src/runtime/proc.go:203"}
+```
+
 ## vCenter has multiple DataCenters
 
 TBD
 
-## Need the -insecure parameter
 
-TBD
-
-## Kind cluster not responsive
-
-TBD
-
-# Need to fix go.mod
-
-TBD
-
-# cleanup
+# cleanup after testing
 
 ```bash
 kubectl delete vg --all -A
