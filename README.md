@@ -1,9 +1,10 @@
 # codeconnect-vm-operator
 Toy VM Operator using kubebuilder for educational purposes presented at VMware Code Connect 2020
 
-# what are we trying to achieve?
+# What are We Trying to Achieve?
 
-Build sample Kubernetes Operator using kubebuilder that will create/delete Virtual Machines based on **declarative** desired state configuration over **imperative** scripting/automation (i.e. PowerCLI or `govc`)
+Learn to build a sample Kubernetes Operator using kubebuilder.
+This operator will create/delete Virtual Machines based on **declarative** desired state configuration over **imperative** scripting/automation (i.e. PowerCLI or `govc` or [govmomi library](https://github.com/vmware/govmomi)).
 
 This declarative configuration is exemplified below by a standard Kubernetes contruct called Customer Resource Definition (CRD):
 
@@ -21,12 +22,17 @@ spec:
   template: my-operator-template
 ```
 
-This CRD will yield the following configuration on vCenter:
+This CRD will yield the following configuration on vCenter (VMfolder with VMs under it):
 
 ![Image](/images/vcenter-final-result.png "vCenter with final result of a CRD desired state.")
 
-The flow: the user creates a CRD via kubectl command, the operator picks up the CRD object and interact with the vCenter over the govmomi (GO library).
-kubectl -> operator (lib:govmomi) -> vCenter
+At a high-level, the flow sequence :
+1. User creates a CRD via kubectl command under their user namespace.
+2. Operator is running on the cluster and it picks up the CRD object.
+3. Operator has vCenter credentials and it reconciles the state of the CRD object with the vCenter using [govmomi library](https://github.com/vmware/govmomi).
+4. Operator takes action: create, delete, scale up or scale down the VMs.
+
+You do not need to be a go developer to follow this step-by-step, but you will be exposed a bit in some go constructs and how go works.
 
 # Requirements for building the operator
 
@@ -36,13 +42,13 @@ All examples and components used on this demo are on a mac osx.
 
 Install all the following:
 
-- git client
+- git client - Apple Xcode or any git command line 
 - Go lang - https://golang.org/dl/
 - Docker Desktop - https://www.docker.com/products/docker-desktop
 - Kubebuild - https://go.kubebuilder.io/quick-start.html
 - Kustomize - https://kubernetes-sigs.github.io/kustomize/installation/
-- [Optional but Recommended] - Code editor such as [VScode](https://code.visualstudio.com/download) or goland.
-- [Optional but Recommended] - have access to a public registry such as quay.io or hub.docker.com
+- [Optional but Recommended] - Code editor such as [VScode](https://code.visualstudio.com/download) or [goland](https://www.jetbrains.com/go/download/#section=mac). We will use VScode screenshots at this step-by-step.
+- [Optional but Recommended] - have access to a public registry such as quay.io or hub.docker.com. This is to push your controller container image to be deployable anywhere.
 
 ## Kubernetes Cluster
 Any Kubernetes 1.16 and above. For this exercise, we will be using a standalone cluster Kind - https://kind.sigs.k8s.io/docs/user/quick-start/
@@ -63,7 +69,7 @@ kind create cluster --image=kindest/node:v1.16.4 --name myother-operator-dev
 You can switch from one cluster to another using the kubectl config use-context <name>. 
 For this exercise, you will need only one cluster.
 
-Additionally, let's make sure the cluster is responsive and create a namespace where we will create our VmGroup object:
+Before we start, let's make sure your kind cluster is responsive and create a namespace where we will create our VmGroup object:
 
 ```bash
 $ kubectl create namespace myoperator-vms
@@ -102,7 +108,7 @@ git clone https://github.com/embano1/codeconnect-vm-operator.git
 
 # Kubebuilder Scaffolding
 
-"scaffolding" is the first step of building an operator which kubebuilder will initialize the operator from a brand-new directory.
+"Scaffolding" is the first step of building an operator which kubebuilder will initialize the operator from a brand-new directory.
 
 ## Creating the directory
 
@@ -182,7 +188,8 @@ For such, we need to provide the following information to vCenter (besides the n
 - replicas: How many VMs under the folder. Integer.
 - template: the name of the VM template that VMs will be created. It is a string.
 
-Scaffolding already created a vmgroup_types.go for us. However, it is empty for these desired fields (on both spec and status sections). We will need to populate these sections with our business logic.
+Scaffolding already created a vmgroup_types.go for us. However, it is empty for these desired fields (on both spec and status sections).
+We will need to populate these sections with our business logic.
 
 ```bash
 cd ~/go/src
@@ -226,11 +233,11 @@ go: found sigs.k8s.io/controller-tools/cmd/controller-gen in sigs.k8s.io/control
 /Users/rbrito/go//bin/controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./..."
 ```
 
-The success criteria is the CRD generated as config/crd/bases/vm.codeconnect.vmworld.com_vmgroups.yaml file.
+The success criteria is this CRD generation is the file `config/crd/bases/vm.codeconnect.vmworld.com_vmgroups.yaml`.
 
 ## Installing the CRD
 
-Before onboarding our CRDs, let's inspect the cluster to make sure they do not exist.
+Before onboarding our CRDs, let's inspect the cluster to make sure the CRD does not exist.
 The following command lists all API Groups of the cluster.
 
 ```bash
@@ -273,20 +280,20 @@ EOF
 vmgroup.vm.codeconnect.vmworld.com/vmgroup-sample created
 ```
 
-Let's list the CRD using a standard kubectl command. Note the some fields are empty. 
-They are this way because we have not written our controller yet:
+Let's list the CRD using a standard kubectl command.
 
 ```bash
 $ kubectl get vmgroups -n myoperator-vms
 NAME             PHASE   CURRENT   DESIRED   CPU   MEMORY   TEMPLATE          LAST_MESSAGE
 vmgroup-sample                     3         2     1        photon-template   
 ```
+Note the some fields are empty. 
+They are this way because we have not written our controller yet, so let's go to the next section.
 
-
-# Controller: vmgroup_controller.go
+# Controller
 
 It is time to compile the controller. 
-For such, we will copy some files from this source repo to our myoperator directory.
+For such, we will copy some files from this source repo to our `myoperator` directory.
 We will go over the code later.
 
 ```bash
@@ -307,7 +314,7 @@ Change the import to the "myoperator" directory:
 ![Image](/images/vscode-new-main-go.png "VScode Screenshot with new main.go")
 
 Repeat the same changes on vmgroup_controller.go and vsphere.go.
-On the latter, you will need to change the constant to match your vCenter datacenter.
+On the vsphere.go, you will need to change the constant to match your vCenter datacenter.
 See example below:
 
 ![Image](/images/vscode-new-vsphere-go.png "VScode Screenshot with new vsphere.go")
@@ -343,14 +350,6 @@ export VC_USER=administrator@vsphere.local
 export VC_PASS='Admin!23'
 ```
 
-Other vCenter (pending a single DC):
-
-```bash
-export VC_HOST=lab02-m01-vc01.lab02.vsanpe.vmware.com
-export VC_USER=rbrito@vsphere.local
-export VC_PASS=P@ssw0rd
-```
-
 Now, let's start controller locally on your machine. This is known running the controller in development mode (since it is not yet as a pod).
 See common errors section to troubleshoot, but you should see the following messages:
 
@@ -374,29 +373,139 @@ $ bin/manager -insecure
 {"level":"info","ts":1600289939.453033,"logger":"controllers.VmGroup","msg":"replica count in sync, checking power state","vmgroup":"myoperator-vms/vmgroup-sample"}
 ```
 
+If you arrived at this point, it means that you have a functional controller on your desktop.
+Now it is time to generate a container image, a deployment file and deploy on your cluster.
 
+## Deploying Controller on the Cluster
 
-
-
-
-
-
-# deploy to kubernetes
-
+First, we need to make a container out of the controller.
+Set the `IMG` parameter to point to your container repository of preference. You can pick a custom name of your image. 
+Do not forget to run docker login against your docker repository.
 
 ```bash
-# build and deploy the manager to the cluster
-make docker-build docker-push IMG=embano1/codeconnect-vm-operator:latest
-make deploy IMG=embano1/codeconnect-vm-operator:latest
+# this will take some time
+$ make docker-build docker-push IMG=quay.io/brito_rafa/codeconnect-vm-operator:latest
+(...)
+Successfully built 36e02974f03f
+Successfully tagged quay.io/brito_rafa/codeconnect-vm-operator:latest
+docker push quay.io/brito_rafa/codeconnect-vm-operator:latest
+The push refers to repository [quay.io/brito_rafa/codeconnect-vm-operator]
 ```
 
-show the `manager.yaml`  manifest
+The container is built and pushed. ***ATTENTION***: Make sure you set the image as public OR create a pull secret.
+Now we need to deploy the container on the cluster and for such, it will need a k8s namespace, a k8s deployment, RBAC roles, etc.
+Luckly, kubebuilder and kustomize create those for you.
+However, our custom controller expects an "-insecure" parameter and expects environmental variables set: VC_HOST, VC_USER and VC_PASS.
+Copy the manager.yaml file from this source directory to your myoperator directory:
+
+```bash
+cd ~/go/src
+cp codeconnect-vm-operator/config/manager/manager.yaml myoperator/config/manager/manager.yaml
+```
+
+Let's take a peak on the `manager.yaml`  manifest.
+
+```yaml
+(...)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+  namespace: system
+        env:
+          - name: VC_USER
+            valueFrom:
+              secretKeyRef:
+                name: vc-creds
+                key: VC_USER
+          - name: VC_PASS
+            valueFrom:
+              secretKeyRef:
+                name: vc-creds
+                key: VC_PASS
+          - name: VC_HOST
+            valueFrom:
+              secretKeyRef:
+                name: vc-creds
+                key: VC_HOST
+      terminationGracePeriodSeconds: 10
+      volumes:
+        - name: vc-creds
+          secret:
+            secretName: vc-creds
+```
+
+The configuration is telling to setenvironmental variables as a secret called "vc-creds".
+So, before the Let's go ahead and create it under the expected namespace myoperator-system.
 
 ```bash
 # create the secret in the target namespace
-kubectl create ns codeconnect-vm-operator-system
-kubectl -n codeconnect-vm-operator-system create secret generic vc-creds --from-literal='VC_USER=administrator@vsphere.local' --from-literal='VC_PASS=Admin!23' --from-literal='VC_HOST=10.78.126.237'
+$ kubectl create ns myoperator-system
+namespace/myoperator-system created
+$ kubectl -n myoperator-system create secret generic vc-creds --from-literal='VC_USER=administrator@vsphere.local' --from-literal='VC_PASS=Admin!23' --from-literal='VC_HOST=10.186.34.28'
+secret/vc-creds created
 ```
+You might have noted that `manager.yaml` makes reference to `system` namespace, not `myoperator-system` namespace.
+This is because kustomize will append the prefix `myoperator-` when generating the actual yaml file. 
+
+
+```bash
+$ make deploy IMG=quay.io/brito_rafa/codeconnect-vm-operator:latest
+(...)
+deployment.apps/myoperator-controller-manager created
+```
+
+Check the logs of the controller:
+
+```bash
+$ kubectl get pods -n myoperator-system
+NAME                                             READY   STATUS    RESTARTS   AGE
+myoperator-controller-manager-7974b5bdbb-f6ptj   2/2     Running   0          84s
+rbrito-a01:myoperator rbrito$ kubectl logs myoperator-controller-manager-7974b5bdbb-f6ptj -n myoperator-system
+
+$ kubectl logs myoperator-controller-manager-7974b5bdbb-f6ptj -n myoperator-system manager
+{"level":"info","ts":1600377978.6746724,"logger":"controller-runtime.metrics","msg":"metrics server is starting to listen","addr":"127.0.0.1:8080"}
+{"level":"info","ts":1600377979.9868977,"logger":"setup","msg":"starting manager"}
+```
+
+If you are having issues on starting the controller, check the common errors section.
+
+Finally, let's check and modify the existent VmGroup object and scale to 5 replicas. You should see 5 VMs on your folder.
+
+```bash
+$ kubectl get vmgroups -A
+NAMESPACE        NAME             PHASE     CURRENT   DESIRED   CPU   MEMORY   TEMPLATE               LAST_MESSAGE
+myoperator-vms   vmgroup-sample   RUNNING   3         3         2     1        vm-operator-template   successfully reconciled VmGroup
+
+# increasing the same object to 5
+# we can replace by a patch command here
+cat <<EOF | kubectl -n myoperator-vms apply -f -
+apiVersion: vm.codeconnect.vmworld.com/v1alpha1
+kind: VmGroup
+metadata:
+  name: vmgroup-sample
+spec:
+  # Add fields here
+  cpu: 2
+  memory: 1
+  replicas: 5
+  template: vm-operator-template
+EOF
+
+# checking again
+$ kubectl get vmgroups -A
+NAMESPACE        NAME             PHASE     CURRENT   DESIRED   CPU   MEMORY   TEMPLATE               LAST_MESSAGE
+myoperator-vms   vmgroup-sample   RUNNING   5         5         2     1        vm-operator-template   successfully reconciled VmGroup
+```
+
+Confirming on the vCenter:
+
+![Image](/images/vcenter-scaled-up.png "vCenter Screenshot with scaled VM Group")
+
+
+# Code Deep Dive
+
+Now, let's take a look at the code itself.
 
 open watch in a separate window
 
@@ -410,7 +519,6 @@ fix the vg-2 template issue
 kubectl patch vg vg-2 --type merge -p '{"spec":{"template":"vm-operator-template"}}'
 ```
 
-# Code Deep Dive
 
 This section will highlight some of the go code that made the controller functional.
 
@@ -498,9 +606,70 @@ If your vCenter does not have a signed cert, you will need to pass the -insecure
 "level":"error","ts":1600288944.8231418,"logger":"setup","msg":"could not connect to vCenter","controller":"VmGroup","error":"could not get vCenter client: Post \"https://10.186.34.28/sdk\": x509: cannot validate certificate for 10.186.34.28 because it doesn't contain any IP SANs","stacktrace":"github.com/go-logr/zapr.(*zapLogger).Error\n\t/Users/rbrito/go/pkg/mod/github.com/go-logr/zapr@v0.2.0/zapr.go:132\nmain.main\n\t/Users/rbrito/go/src/myoperator/main.go:92\nruntime.main\n\t/usr/local/Cellar/go/1.14.2_1/libexec/src/runtime/proc.go:203"}
 ```
 
+## Errors on make deployment
+
+Make deployment does not create the correct namespace using "myoperator-" prefix.
+This is probably a bug on kustomize.
+Solution: create the myoperator-system namespace manually before running `make deploy` (as specified in the steps). 
+
+```
+$ make deploy IMG=quay.io/brito_rafa/codeconnect-vm-operator:latest
+(...)
+cd config/manager && kustomize edit set image controller=quay.io/brito_rafa/codeconnect-vm-operator:latest
+kustomize build config/default | kubectl apply -f -
+namespace/system created
+Warning: kubectl apply should be used on resource created by either kubectl create --save-config or kubectl apply
+customresourcedefinition.apiextensions.k8s.io/vmgroups.vm.codeconnect.vmworld.com configured
+clusterrole.rbac.authorization.k8s.io/myoperator-manager-role created
+clusterrole.rbac.authorization.k8s.io/myoperator-proxy-role created
+clusterrole.rbac.authorization.k8s.io/myoperator-metrics-reader created
+clusterrolebinding.rbac.authorization.k8s.io/myoperator-manager-rolebinding created
+clusterrolebinding.rbac.authorization.k8s.io/myoperator-proxy-rolebinding created
+Error from server (NotFound): error when creating "STDIN": namespaces "myoperator-system" not found
+Error from server (NotFound): error when creating "STDIN": namespaces "myoperator-system" not found
+Error from server (NotFound): error when creating "STDIN": namespaces "myoperator-system" not found
+Error from server (NotFound): error when creating "STDIN": namespaces "myoperator-system" not found
+make: *** [deploy] Error 1
+```
+
+## Controller not starting as a pod
+
+### Image Permissions
+
+Set your image as "public" access.
+
+```bash
+$ kubectl get pods -n myoperator-system
+NAME                                             READY   STATUS             RESTARTS   AGE
+myoperator-controller-manager-5bdbb5994c-hkwrh   1/2     ImagePullBackOff   0          89s
+```
+
+### CrashLoopBackOff
+
+It could be a bunch of things, including the lack of "-insecure" parameter, the lack of env variables, etc.
+
+```bash
+$ kubectl get pods -n myoperator-system
+NAME                                             READY   STATUS             RESTARTS   AGE
+myoperator-controller-manager-5bdbb5994c-csjqk   1/2     CrashLoopBackOff   1          13s
+
+$ kubectl logs myoperator-controller-manager-5bdbb5994c-csjqk -n myoperator-system manager
+```
+
+For the -insecure parameter, edit the deployment:
+
+```bash
+kubectl edit deployment myoperator-controller-manager -n myoperator-system 
+
+# add - -insecure
+# under
+# - --enable-leader-election
+```
+
+
 ## vCenter has multiple DataCenters
 
-TBD
+TBD error
 
 
 # cleanup after testing
